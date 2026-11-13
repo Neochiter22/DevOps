@@ -208,3 +208,56 @@ curl --cacert ~/devops.crt -I https://devops.local
 - `/var/log/nginx/devops-site.error.log`
 
 Состояние веб-сервера сохранено в снимке VirtualBox `04-nginx-https`.
+
+## 9. Контейнеризация
+
+В Ubuntu 24.04 установлен Docker Engine 29.9.3 из официального репозитория Docker
+(`https://download.docker.com/linux/ubuntu`), а не через Snap или пакет `docker.io`.
+GPG-ключ репозитория хранится в `/etc/apt/keyrings/docker.asc`, конфигурация
+репозитория — `/etc/apt/sources.list.d/docker.sources`.
+Установлены `docker-ce`, `docker-ce-cli`, `containerd.io`,
+`docker-buildx-plugin` и `docker-compose-plugin` (Compose 5.7.1).
+Служба Docker запускается через systemd. Пользователь `devops` входит в
+группу `docker`; это даёт расширенные права, сопоставимые с root.
+
+Проект находится на сервере в `/home/devops/app`. Исходные файлы создаются
+в каталоге `app/` репозитория Windows и доставляются по SSH.
+В `Dockerfile` используется базовый образ `python:3.12-slim`, а Flask
+запускается через Gunicorn непривилегированным пользователем `app`.
+Проверка: `docker compose exec app id`.
+
+Переменные окружения размещены в `/home/devops/app/.env`, права доступа —
+`600`. Пароль PostgreSQL сгенерирован командой `openssl rand -hex 16`.
+Содержимое `.env` не включается ни в Git, ни в Docker-образ; в репозитории
+хранится только `.env.example`. Для проверки прав применяется
+`stat -c '%a' ~/app/.env`.
+
+Конфигурация `docker-compose.yml` создаёт два сервиса: `app` (Flask) и
+`db` (PostgreSQL `postgres:16-alpine`). Сеть проекта — `app_backend`
+типа bridge. Приложение находит базу по DNS-имени `db` внутри этой сети.
+Запуск приложения зависит от проверки `pg_isready` (состояние `healthy`).
+Порт приложения проброшен только на `127.0.0.1:5000`, порт PostgreSQL
+`5432` на хост не публикуется. Проверки: `docker compose ps`,
+`docker compose exec app getent hosts db`, `sudo ss -tlnp`.
+
+Именованный том `app_db_data` подключён к `/var/lib/postgresql/data`
+и хранит счётчик посещений независимо от контейнера.
+`docker compose down` оставляет том, а `docker compose down -v` удаляет
+том и все данные — эту команду применяют только для демонстрационного
+сброса или при осознанном удалении базы.
+
+Nginx использует `/etc/nginx/sites-available/devops-site`. В HTTPS-блоке
+путь `/app/` проксируется на `http://127.0.0.1:5000/` с заголовками
+`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`.
+Статический ресурс по адресу `https://devops.local/` сохранён.
+Проверки: `sudo nginx -t`,
+`curl --cacert ~/devops.crt https://devops.local/app/`,
+`curl --cacert ~/devops.crt -I https://devops.local/`.
+Если контейнер остановлен, Nginx возвращает `502 Bad Gateway`,
+а причина фиксируется в `/var/log/nginx/devops-site.error.log`.
+
+Проверка работоспособности всей конфигурации реализована в
+`scripts/audit.sh` (раздел `[5] Контейнеризация`). Скрипт проверяет
+Docker, состояние PostgreSQL, публикацию портов и права `.env`.
+После успешного завершения ПР №7 требуется создать снимок VirtualBox
+`05-docker-compose` и сохранить его вместе с предыдущими снимками.

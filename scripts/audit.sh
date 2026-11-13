@@ -87,6 +87,31 @@ else
     check "Права файлов и TLS-ключа безопасны" "yes" "no"
 fi
 
+echo "[5] Контейнеризация"
+
+check "Docker активен" "active" \
+    "$(systemctl is-active docker 2>/dev/null || true)"
+
+check "PostgreSQL находится в состоянии healthy" "healthy" \
+    "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null || true)"
+
+if SOCKETS=$(sudo ss -tlnH 2>/dev/null); then
+    UNSAFE_PORTS=$(printf '%s\n' "$SOCKETS" | awk '
+        $4 ~ /:(5000|5432)$/ &&
+        $4 !~ /^127[.]0[.]0[.]1:(5000|5432)$/ { print $4 }
+    ')
+    if [[ -z "$UNSAFE_PORTS" ]]; then
+        check "Порты 5000 и 5432 не опубликованы наружу" "safe" "safe"
+    else
+        check "Порты 5000 и 5432 не опубликованы наружу" "safe" "$UNSAFE_PORTS"
+    fi
+else
+    check "Порты 5000 и 5432 не опубликованы наружу" "safe" "ss-error"
+fi
+
+check "Права файла ~/app/.env" "600" \
+    "$(stat -c '%a' "$HOME/app/.env" 2>/dev/null || true)"
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
