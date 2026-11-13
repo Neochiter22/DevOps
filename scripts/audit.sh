@@ -57,6 +57,36 @@ awk -F: '$3>=1000 && $3<65534 {
     printf "%s (uid=%s)\n", $1, $3
 }' /etc/passwd
 
+
+echo "[4] Веб-сервер"
+
+check "Nginx активен" "active" \
+    "$(systemctl is-active nginx 2>/dev/null || true)"
+
+if sudo nginx -t >/dev/null 2>&1; then
+    check "Конфигурация Nginx корректна" "yes" "yes"
+else
+    check "Конфигурация Nginx корректна" "yes" "no"
+fi
+
+CERT_CHECK_SECONDS="${CERT_CHECK_SECONDS:-2592000}"
+
+if openssl x509 -in /etc/ssl/certs/devops.crt \
+    -noout -checkend "$CERT_CHECK_SECONDS" >/dev/null 2>&1; then
+    check "Сертификат действителен минимум 30 дней" "yes" "yes"
+else
+    check "Сертификат действителен минимум 30 дней" "yes" "no"
+fi
+
+WRITABLE=$(find /var/www/devops-site -perm -o+w -print -quit 2>/dev/null)
+KEY_MODE=$(sudo stat -c '%a' /etc/ssl/private/devops.key 2>/dev/null)
+
+if [[ -z "$WRITABLE" && "$KEY_MODE" == "600" ]]; then
+    check "Права файлов и TLS-ключа безопасны" "yes" "yes"
+else
+    check "Права файлов и TLS-ключа безопасны" "yes" "no"
+fi
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
