@@ -131,3 +131,80 @@
 12. Выполнить `bash ~/audit.sh`, убедиться в результате 6 OK и коде возврата 0.
 
 При восстановлении сначала необходимо обеспечить рабочее SSH-подключение и только потом вводить ограничения доступа.
+
+
+## 8. Веб-сервер
+
+На виртуальной машине установлен веб-сервер Nginx.
+
+- Пакет: nginx.
+- Конфигурация сайта: `/etc/nginx/sites-available/devops-site`.
+- Активная конфигурация: `/etc/nginx/sites-enabled/devops-site`.
+- Стандартный сайт Nginx отключён.
+- Каталог сайта: `/var/www/devops-site`.
+- Владелец каталога и файлов: `devops:devops`.
+- Права каталогов: 755.
+- Права файлов: 644.
+
+Веб-сервер обслуживает домен `devops.local`.
+Порт 80 используется для перенаправления HTTP на HTTPS с кодом 301.
+Порт 443 используется для защищённого соединения TLS 1.2 и TLS 1.3.
+
+### TLS-сертификат
+
+- Сертификат: `/etc/ssl/certs/devops.crt`, права 644.
+- Закрытый ключ: `/etc/ssl/private/devops.key`, права 600.
+- Владелец ключа: root.
+- Тип сертификата: самоподписанный.
+- CN: devops.local.
+- SAN: DNS:devops.local.
+- Срок действия: 365 дней, с 13.11.2026 по 13.11.2027.
+
+Команда создания сертификата:
+
+```bash
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/devops.key -out /etc/ssl/certs/devops.crt -subj "/CN=devops.local" -addext "subjectAltName=DNS:devops.local"
+```
+
+### Проверка сервера
+
+Проверка конфигурации:
+
+```bash
+sudo nginx -t
+```
+
+Применение конфигурации:
+
+```bash
+sudo systemctl reload nginx
+```
+
+Проверка работы службы:
+
+```bash
+systemctl is-active nginx
+```
+
+Проверка HTTP-перенаправления:
+
+```bash
+curl -I http://devops.local
+```
+
+Проверка HTTPS с доверенным сертификатом:
+
+```bash
+curl --cacert ~/devops.crt -I https://devops.local
+```
+
+Содержимое сайта доставляется из каталога `site/` репозитория через `rsync` с использованием SSH и сценария `scripts/deploy.sh`.
+
+Сценарий устанавливает права 755 для каталогов и 644 для файлов, проверяет чистоту Git и доступность сайта после доставки.
+
+Для диагностики используются журналы:
+
+- `/var/log/nginx/devops-site.access.log`
+- `/var/log/nginx/devops-site.error.log`
+
+Состояние веб-сервера сохранено в снимке VirtualBox `04-nginx-https`.
