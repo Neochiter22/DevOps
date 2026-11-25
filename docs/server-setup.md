@@ -261,3 +261,48 @@ Nginx использует `/etc/nginx/sites-available/devops-site`. В HTTPS-б
 Docker, состояние PostgreSQL, публикацию портов и права `.env`.
 После успешного завершения ПР №7 требуется создать снимок VirtualBox
 `05-docker-compose` и сохранить его вместе с предыдущими снимками.
+
+## 10. Ansible
+
+Управляющий узел: Ubuntu 22.04 в WSL, Ansible Core 2.17.14.
+Управляемый узел: devops-vm, Ubuntu Server 24.04.
+IP-адрес: 192.168.56.101.
+Проект расположен в каталоге ansible/.
+
+Inventory:
+- bootstrap.ini — первичное подключение от student по паролю.
+- prod.ini — подключение от devops по SSH-ключу.
+
+Роли:
+- base — базовые пакеты и установка Docker Engine.
+- ssh — пользователь devops, SSH-ключ, sudo и UFW.
+- nginx — настройка обратного прокси.
+- app — загрузка образа, запуск контейнера и health-check.
+
+Образ: ghcr.io/neochiter22/devops-ci-app
+SHA: bdd17a38b2116baba6c4827ad95d15477bd24a9b
+Контейнер: devops-ci-app
+Порт приложения: 127.0.0.1:5000
+Внешний порт Nginx: 80
+Health endpoint: http://192.168.56.101/health
+
+Первичный запуск:
+
+    cd ansible
+    ansible-playbook -i inventory/bootstrap.ini site.yml --ask-pass --ask-become-pass
+
+Повторный запуск:
+
+    ansible-playbook site.yml
+
+Проверка конфигурации:
+
+    ansible-playbook verify.yml
+
+Повторный запуск site.yml завершился с changed=0 и failed=0.
+После ручного удаления контейнера и изменения конфигурации
+Nginx сервис был восстановлен средствами Ansible.
+При указании несуществующего SHA работающий контейнер
+остался доступен.
+Аудит обнаружил остановку контейнера и подтвердил
+работоспособность приложения после восстановления.
